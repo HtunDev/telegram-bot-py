@@ -26,7 +26,7 @@ CREATE TABLE IF NOT EXISTS messages (
 """)
 conn.commit()
 
-MAX_HISTORY = 6
+MAX_HISTORY = 3   # reduce = faster
 
 # ===== RATE LIMIT =====
 user_last_message_time = {}
@@ -56,7 +56,7 @@ async def chat(update, context):
     user_id = update.message.from_user.id
     user_message = update.message.text
 
-    # RATE LIMIT
+    # ===== RATE LIMIT =====
     now = time.time()
     last_time = user_last_message_time.get(user_id, 0)
 
@@ -66,7 +66,10 @@ async def chat(update, context):
 
     user_last_message_time[user_id] = now
 
-    # MEMORY
+    # ===== LOADING MESSAGE =====
+    thinking_msg = await update.message.reply_text("⏳ Thinking...")
+
+    # ===== MEMORY =====
     history = get_user_history(user_id)
     history.append({"role": "user", "content": user_message})
 
@@ -76,25 +79,27 @@ async def chat(update, context):
     }
 
     payload = {
-        "model": "qwen/qwen3.6-plus-preview:free",
+        "model": "openrouter/free",  # auto free + faster
         "messages": history
     }
 
     try:
-        async with httpx.AsyncClient(timeout=20) as client:
+        async with httpx.AsyncClient(timeout=10) as client:
             response = await client.post(API_URL, headers=headers, json=payload)
             data = response.json()
 
         ai_reply = data.get('choices', [{}])[0].get('message', {}).get('content', "No response")
 
+        # ===== SAVE MEMORY =====
         save_message(user_id, "user", user_message)
         save_message(user_id, "assistant", ai_reply)
 
-        await update.message.reply_text(ai_reply)
+        # edit thinking message instead of sending new one
+        await thinking_msg.edit_text(ai_reply)
 
     except Exception as e:
         logging.error(str(e))
-        await update.message.reply_text("⚠️ Error, try again later.")
+        await thinking_msg.edit_text("⚠️ AI is slow or busy. Try again.")
 
 # ===== APP =====
 app = ApplicationBuilder().token(BOT_TOKEN).build()
