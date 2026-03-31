@@ -11,12 +11,9 @@ API_URL = "https://openrouter.ai/api/v1/chat/completions"
 API_KEY = os.getenv("OPENAI_API_KEY")
 
 # ===== LOGGING =====
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s"
-)
+logging.basicConfig(level=logging.INFO)
 
-# ===== DATABASE (SQLite) =====
+# ===== DATABASE =====
 conn = sqlite3.connect("memory.db", check_same_thread=False)
 cursor = conn.cursor()
 
@@ -29,14 +26,13 @@ CREATE TABLE IF NOT EXISTS messages (
 """)
 conn.commit()
 
-MAX_HISTORY = 6  # number of messages to keep
+MAX_HISTORY = 6
 
 # ===== RATE LIMIT =====
 user_last_message_time = {}
-COOLDOWN = 3  # seconds
+COOLDOWN = 3
 
 # ===== FUNCTIONS =====
-
 def get_user_history(user_id):
     cursor.execute(
         "SELECT role, content FROM messages WHERE user_id=? ORDER BY rowid DESC LIMIT ?",
@@ -53,15 +49,14 @@ def save_message(user_id, role, content):
     conn.commit()
 
 # ===== HANDLERS =====
-
 async def start(update, context):
-    await update.message.reply_text("Hi! I’m your AI bot 🤖 (with memory)")
+    await update.message.reply_text("Hi! I’m your AI bot 🤖")
 
 async def chat(update, context):
     user_id = update.message.from_user.id
     user_message = update.message.text
 
-    # ===== RATE LIMIT =====
+    # RATE LIMIT
     now = time.time()
     last_time = user_last_message_time.get(user_id, 0)
 
@@ -71,7 +66,7 @@ async def chat(update, context):
 
     user_last_message_time[user_id] = now
 
-    # ===== LOAD MEMORY =====
+    # MEMORY
     history = get_user_history(user_id)
     history.append({"role": "user", "content": user_message})
 
@@ -92,15 +87,14 @@ async def chat(update, context):
 
         ai_reply = data.get('choices', [{}])[0].get('message', {}).get('content', "No response")
 
-        # ===== SAVE MEMORY =====
         save_message(user_id, "user", user_message)
         save_message(user_id, "assistant", ai_reply)
 
         await update.message.reply_text(ai_reply)
 
     except Exception as e:
-        logging.error(f"Error for user {user_id}: {str(e)}")
-        await update.message.reply_text("⚠️ Something went wrong. Try again later.")
+        logging.error(str(e))
+        await update.message.reply_text("⚠️ Error, try again later.")
 
 # ===== APP =====
 app = ApplicationBuilder().token(BOT_TOKEN).build()
