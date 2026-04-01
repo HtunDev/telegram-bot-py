@@ -4,6 +4,8 @@ import os
 import time
 import logging
 import sqlite3
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
 
 # ===== CONFIG =====
 BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -107,5 +109,26 @@ app = ApplicationBuilder().token(BOT_TOKEN).build()
 app.add_handler(CommandHandler("start", start))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat))
 
+
+def _start_port_for_render_healthcheck():
+    """Render Web Services expect a process listening on $PORT; polling alone never binds it."""
+    port_raw = os.getenv("PORT")
+    if not port_raw:
+        return
+    port = int(port_raw)
+
+    class _HealthHandler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(204)
+            self.end_headers()
+
+        def log_message(self, format, *args):
+            pass
+
+    server = HTTPServer(("0.0.0.0", port), _HealthHandler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+
+
 if __name__ == "__main__":
+    _start_port_for_render_healthcheck()
     app.run_polling()
